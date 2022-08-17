@@ -15,7 +15,7 @@ Resources:
   Ec2Instance:
     Type: AWS::EC2::Instance
     Properties:
-      InstanceType: t2.micro
+      InstanceType: t3a.medium
       ImageId: ami-0a23cbff9db6a5c61 # Ubuntu in Jakarta region
       KeyName : ssh-faiq
       UserData:
