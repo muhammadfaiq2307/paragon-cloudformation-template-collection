@@ -16,7 +16,7 @@ Resources:
     Type: AWS::EC2::Instance
     Properties:
       InstanceType: t2.micro
-      ImageId: ami-0aab355e1bfa1e72e # Amazon Linux AMI in N.California
+      ImageId: ami-0a23cbff9db6a5c61 # Ubuntu in Jakarta region
       KeyName : Faiq
       UserData:
         'Fn::Base64': 
