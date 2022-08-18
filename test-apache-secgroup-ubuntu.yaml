@@ -25,12 +25,13 @@ Resources:
             apt update -y
 
             # install apache
-            apt install -y apache2
+            apt install -y nginx
 
             # start server
-            systemctl start apache2
-
-            systemctl enable apache2
+            systemctl start nginx
+            systemctl enable nginx
+            ufw allow 'Nginx HTTP'
+            
       SecurityGroups:
         - !Ref EC2SecurityGroup
       Tags:
