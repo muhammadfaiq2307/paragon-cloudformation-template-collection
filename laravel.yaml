@@ -12,10 +12,6 @@ Parameters:
       - dev
       - test
       - prod
-  AmiID:
-    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
-    Description: 'The ID of the AMI.'
-    Default: /aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2
   KeyPairName:
     Description: EC2 SSH Keypair
     Type: AWS::EC2::KeyPair::KeyName
@@ -55,7 +51,7 @@ Resources:
     Type: AWS::EC2::Instance
     Properties:
       AvailabilityZone: !Ref AvailabilityZone
-      ImageId: !Ref AmiID
+      ImageId: ami-00c5331644ad576ad
       InstanceType: !FindInMap [EnvironmentToInstanceType, !Ref EnvironmentType, InstanceType]
       KeyName: !Ref KeyPairName
       SecurityGroupIds:
