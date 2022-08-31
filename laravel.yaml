@@ -40,11 +40,11 @@ Parameters:
 Mappings:
   EnvironmentToInstanceType:
     dev:
-      InstanceType: t2.nano
+      InstanceType: t3.nano
     test:
-      InstanceType: t2.micro
+      InstanceType: t3.micro
     prod:
-      InstanceType: t2.small
+      InstanceType: t3.small
 
 Resources:
   WebAppInstance:
