@@ -2,6 +2,7 @@ AWSTemplateFormatVersion: 2010-09-09
 Description: Laravel template
 
 Parameters:
+
   AvailabilityZone:
     Type: AWS::EC2::AvailabilityZone::Name
   EnvironmentType:
@@ -39,6 +40,7 @@ Parameters:
     Default: 'postgres'
 
 Mappings:
+
   EnvironmentToInstanceType:
     dev:
       InstanceType: t3.nano
@@ -48,7 +50,114 @@ Mappings:
       InstanceType: t3.small
 
 Resources:
-  WebAppInstance:
+
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      Tags:
+        - Key: Name
+          Value: !Ref AWS::StackName
+  
+  PrivateSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [0, !GetAZs '']
+      CidrBlock: 10.0.0.0/24
+      Tags:
+        - Key: Name
+          Value: !Ref AWS::StackName
+        - Key: AZ
+          Value: !Select [0, !GetAZs '']
+
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [0, !GetAZs '']
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.1.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Ref AWS::StackName
+        - Key: AZ
+          Value: !Select [0, !GetAZs '']
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Ref AWS::StackName
+
+  VPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC
+
+  RouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Ref AWS::StackName
+
+  InternetRoute:
+    Type: AWS::EC2::Route
+    DependsOn: VPCGatewayAttachment
+    Properties:
+      RouteTableId: !Ref RouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+  
+  # https://serverfault.com/questions/938237/cant-ssh-into-aws-cloudformation-stack-instance/938254#938254?newreg=d7f6698232144c41be651e7a4d357817
+  SubnetRouteTableAssociationAZ1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RouteTable
+      SubnetId: !Ref PublicSubnet
+
+  BastionInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-00c5331644ad576ad
+      InstanceType: t3.nano
+      KeyName: !Ref KeyName
+      SubnetId: !Ref PublicSubnet
+      SecurityGroupIds:
+        - !Ref BastionSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-BastionInstance'
+
+  BastionSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription:
+        !Sub 'Security group for ${AWS::StackName} bastion host'
+      VpcId: !Ref VPC
+
+  BastionAllowInboundSSHFromInternet:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref BastionSecurityGroup
+      IpProtocol: tcp
+      FromPort: 22
+      ToPort: 22
+      CidrIp: 0.0.0.0/0
+
+  BastionAllowOutboundSSHToApplication:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref BastionSecurityGroup
+      IpProtocol: tcp
+      FromPort: 22
+      ToPort: 22
+      DestinationSecurityGroupId: !Ref ApplicationSecurityGroup
+          
+  ApplicationInstance:
     Type: AWS::EC2::Instance
     Properties:
       AvailabilityZone: !Ref AvailabilityZone
@@ -56,7 +165,7 @@ Resources:
       InstanceType: !FindInMap [EnvironmentToInstanceType, !Ref EnvironmentType, InstanceType]
       KeyName: !Ref KeyPairName
       SecurityGroupIds:
-        - !Ref WebAppSecurityGroup
+        - !Ref ApplicationSecurityGroup
       UserData:
         'Fn::Base64': 
           !Sub |
@@ -88,42 +197,22 @@ Resources:
             systemctl enable nginx
             systemctl start nginx
             ufw allow 'Nginx HTTP'
-
-  WebAppSecurityGroup:
+          
+  ApplicationSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupName: !Join [ '-', [ webapp-security-group, !Ref EnvironmentType ] ]
-      GroupDescription: 'Allow HTTP/HTTPS and SSH inbound and outbound traffic'
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 80
-          ToPort: 80
-          CidrIp: 0.0.0.0/0
-        - IpProtocol: tcp
-          FromPort: 443
-          ToPort: 443
-          CidrIp: 0.0.0.0/0
-        - IpProtocol: tcp
-          FromPort: 22
-          ToPort: 22
-          CidrIp: 0.0.0.0/0
-        - IpProtocol: tcp
-          FromPort: 1515
-          ToPort: 1515
-          CidrIp: 0.0.0.0/0
-        - IpProtocol: tcp
-          FromPort: 1514
-          ToPort: 1514
-          CidrIp: 0.0.0.0/0
+      GroupDescription:
+        !Sub 'Internal Security group for ${AWS::StackName}'
+      VpcId: !Ref VPC
 
-  WebAppEIP:
-    Type: AWS::EC2::EIP
+  ApplicationAllowInboundSSHFromBastion:
+    Type: AWS::EC2::SecurityGroupIngress
     Properties:
-      Domain: vpc
-      InstanceId: !Ref WebAppInstance
-      Tags:
-        - Key: Name
-          Value: !Join [ '-', [ webapp-eip, !Ref EnvironmentType ] ]
+      GroupId: !Ref ApplicationSecurityGroup
+      IpProtocol: tcp
+      FromPort: 22
+      ToPort: 22
+      SourceSecurityGroupId: !Ref BastionSecurityGroup
 
   WebAppDatabase:
     Type: AWS::RDS::DBInstance
@@ -152,19 +241,24 @@ Resources:
         FromPort: 5432
         ToPort: 5432
         SourceSecurityGroupName:
-          Ref: WebAppSecurityGroup
+          Ref: ApplicationSecurityGroup
       Tags:
         - Key: Name
           Value: !Join [ '-', [ webapp-db-security-group, !Ref EnvironmentType ] ]
 
 Outputs:
-  WebsiteURL:
-    Value: !Sub http://${WebAppEIP}
-    Description: WebApp URL
 
-  WebServerPublicDNS:
-    Description: 'Public DNS of EC2 instance'
-    Value: !GetAtt WebAppInstance.PublicDnsName
+  BastionPublicIp:
+    Description: 'Bastion Public IP'
+    Value: !Sub 'http://${BastionInstance.PublicIp}'
+    Export:
+      Name: BastionPublicIp
+      
+  ApplicationPrivateIp:
+    Description: 'Application Private IP'
+    Value: !Sub 'http://${ApplicationInstance.PrivateIp}'
+    Export:
+      Name: ApplicationPrivateIp
 
   WebAppDatabaseEndpoint:
     Description: 'Connection endpoint for the database'
