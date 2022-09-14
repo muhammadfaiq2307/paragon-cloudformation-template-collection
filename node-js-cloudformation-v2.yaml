@@ -219,8 +219,8 @@ Resources:
     Type: AWS::RDS::DBInstance
     Properties:
       DBInstanceIdentifier: !Ref DBInstanceIdentifier
-      SecurityGroupIds:
-      - !Ref DBEC2SecurityGroup
+      VPCSecurityGroups:
+      - !GetAtt DBEC2SecurityGroup.GroupId
       AllocatedStorage: '5'
       DBInstanceClass: db.t3.micro
       Engine: postgres
