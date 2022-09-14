@@ -166,6 +166,7 @@ Resources:
       KeyName: !Ref KeyPairName
       SecurityGroupIds:
         - !Ref ApplicationSecurityGroup
+      SubnetId: !Ref PrivateSubnet
       UserData:
         'Fn::Base64': 
           !Sub |
