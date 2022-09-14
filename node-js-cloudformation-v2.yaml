@@ -124,7 +124,7 @@ Resources:
     Properties:
       ImageId: ami-00c5331644ad576ad
       InstanceType: t3.nano
-      KeyName: !Ref KeyName
+      KeyName: !Ref KeyPairName
       SubnetId: !Ref PublicSubnet
       SecurityGroupIds:
         - !Ref BastionSecurityGroup
