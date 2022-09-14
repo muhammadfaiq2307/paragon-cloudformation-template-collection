@@ -219,8 +219,8 @@ Resources:
     Type: AWS::RDS::DBInstance
     Properties:
       DBInstanceIdentifier: !Ref DBInstanceIdentifier
-      VPCSecurityGroups:
-      - !GetAtt DBEC2SecurityGroup.GroupId
+      SecurityGroupIds:
+      - !Ref DBEC2SecurityGroup
       AllocatedStorage: '5'
       DBInstanceClass: db.t3.micro
       Engine: postgres
@@ -231,22 +231,23 @@ Resources:
           Value: !Join [ '-', [ webapp-rds, !Ref EnvironmentType ] ]
     DeletionPolicy: Snapshot
     UpdateReplacePolicy: Snapshot
-
+          
   DBEC2SecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupName: !Join [ '-', [ webapp-db-security-group, !Ref EnvironmentType ] ]
-      GroupDescription: Allow postgres inbound traffic
-      SecurityGroupIngress:
-      - IpProtocol: tcp
-        FromPort: 5432
-        ToPort: 5432
-        SourceSecurityGroupName:
-          Ref: ApplicationSecurityGroup
-      Tags:
-        - Key: Name
-          Value: !Join [ '-', [ webapp-db-security-group, !Ref EnvironmentType ] ]
-
+      GroupDescription:
+        !Sub 'Security group for ${AWS::StackName} RDS'
+      VpcId: !Ref VPC
+      
+  DBEC2AllowIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref DBEC2SecurityGroup
+      IpProtocol: tcp
+      FromPort: 5432
+      ToPort: 5432
+      SourceSecurityGroupId: !Ref BastionSecurityGroup
+      
 Outputs:
 
   BastionPublicIp:
