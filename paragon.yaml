@@ -1,0 +1,235 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Bastion Host template
+Parameters:
+  AvailabilityZone:
+    Type: 'AWS::EC2::AvailabilityZone::Name'
+  EnvironmentType:
+    Description: Specify the Environment type of the stack.
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - test
+      - prod
+  KeyPairName:
+    Description: EC2 SSH Keypair
+    Type: 'AWS::EC2::KeyPair::KeyName'
+    ConstraintDescription: must be the name of an existing EC2 KeyPair
+  DBInstanceIdentifier:
+    Type: String
+    Default: webapp-db
+  DBUsername:
+    NoEcho: 'true'
+    Description: Username for Postgresql database access
+    Type: String
+    MinLength: '1'
+    MaxLength: '16'
+    AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
+    ConstraintDescription: Must begin with a letter and contain only alphanumeric characters.
+    Default: postgres
+  DBPassword:
+    NoEcho: 'true'
+    Description: Password for Postgresql database access
+    Type: String
+    MinLength: '8'
+    MaxLength: '41'
+    AllowedPattern: '[a-zA-Z0-9]*'
+    ConstraintDescription: Must contain only alphanumeric characters.
+    Default: postgres
+Mappings:
+  EnvironmentToInstanceType:
+    dev:
+      InstanceType: t3.nano
+    test:
+      InstanceType: t3.micro
+    prod:
+      InstanceType: t3.small
+Resources:
+  VPC:
+    Type: 'AWS::EC2::VPC'
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      Tags:
+        - Key: Name
+          Value: !Ref 'AWS::StackName'
+  PrivateSubnet:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select 
+        - 0
+        - !GetAZs ''
+      CidrBlock: 10.0.0.0/24
+      Tags:
+        - Key: Name
+          Value: !Ref 'AWS::StackName'
+        - Key: AZ
+          Value: !Select 
+            - 0
+            - !GetAZs ''
+  PublicSubnet:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      AvailabilityZone: !Select 
+        - 0
+        - !GetAZs ''
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.1.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Ref 'AWS::StackName'
+        - Key: AZ
+          Value: !Select 
+            - 0
+            - !GetAZs ''
+  InternetGateway:
+    Type: 'AWS::EC2::InternetGateway'
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Ref 'AWS::StackName'
+  VPCGatewayAttachment:
+    Type: 'AWS::EC2::VPCGatewayAttachment'
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC
+  RouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Ref 'AWS::StackName'
+  InternetRoute:
+    Type: 'AWS::EC2::Route'
+    DependsOn: VPCGatewayAttachment
+    Properties:
+      RouteTableId: !Ref RouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+  SubnetRouteTableAssociationAZ1:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      RouteTableId: !Ref RouteTable
+      SubnetId: !Ref PublicSubnet
+  BastionInstance:
+    Type: 'AWS::EC2::Instance'
+    Properties:
+      ImageId: ami-00c5331644ad576ad
+      InstanceType: t3.nano
+      KeyName: !Ref KeyPairName
+      SubnetId: !Ref PublicSubnet
+      SecurityGroupIds:
+        - !Ref BastionSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-BastionInstance'
+  BastionSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: !Sub 'Security group for ${AWS::StackName} bastion host'
+      VpcId: !Ref VPC
+  BastionAllowInboundSSHFromInternet:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Properties:
+      GroupId: !Ref BastionSecurityGroup
+      IpProtocol: tcp
+      FromPort: 22
+      ToPort: 22
+      CidrIp: 0.0.0.0/0
+  BastionAllowOutboundSSHToApplication:
+    Type: 'AWS::EC2::SecurityGroupEgress'
+    Properties:
+      GroupId: !Ref BastionSecurityGroup
+      IpProtocol: tcp
+      FromPort: 22
+      ToPort: 22
+      DestinationSecurityGroupId: !Ref ApplicationSecurityGroup
+  ApplicationInstance:
+    Type: 'AWS::EC2::Instance'
+    Properties:
+      AvailabilityZone: !Ref AvailabilityZone
+      ImageId: ami-00c5331644ad576ad
+      InstanceType: !FindInMap 
+        - EnvironmentToInstanceType
+        - !Ref EnvironmentType
+        - InstanceType
+      KeyName: !Ref KeyPairName
+      SecurityGroupIds:
+        - !Ref ApplicationSecurityGroup
+      SubnetId: !Ref PrivateSubnet
+      UserData:
+        'Fn::Base64': !Sub >
+          #!/bin/bash
+
+          apt update -y
+
+
+          # install nginx
+
+          apt install -y nginx
+
+
+          # install git
+
+          apt install -y git
+
+
+          # install ansible
+
+          apt install -y ansible
+
+
+          # clone ansible ubuntu cis template
+
+          git clone https://github.com/akramab/ubuntu-cis-ansible
+
+
+          # run ansible cis template
+
+          ansible-playbook -i host ./ubuntu-cis-ansible/run.yaml
+
+
+          # install wazuh
+
+          curl -so wazuh-agent-4.3.2.deb https://packages.wazuh.com/4.x/apt/pool/main/w/wazuh-agent/wazuh-agent_4.3.2-1_amd64.deb && sudo WAZUH_MANAGER='52.77.133.120' WAZUH_REGISTRATION_PASSWORD='W@zuh&P@arg0n!' WAZUH_AGENT_GROUP='default' dpkg -i ./wazuh-agent-4.3.2.deb
+
+
+          # start server
+
+          systemctl daemon-reload
+
+          systemctl enable wazuh-agent
+
+          systemctl start wazuh-agent
+
+          systemctl enable nginx
+
+          systemctl start nginx
+
+          ufw allow 'Nginx HTTP'
+  ApplicationSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: !Sub 'Internal Security group for ${AWS::StackName}'
+      VpcId: !Ref VPC
+  ApplicationAllowInboundSSHFromBastion:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Properties:
+      GroupId: !Ref ApplicationSecurityGroup
+      IpProtocol: tcp
+      FromPort: 22
+      ToPort: 22
+      SourceSecurityGroupId: !Ref BastionSecurityGroup
+Outputs:
+  BastionPublicIp:
+    Description: Bastion Public IP
+    Value: !Sub 'http://${BastionInstance.PublicIp}'
+    Export:
+      Name: BastionPublicIp
+  ApplicationPrivateIp:
+    Description: Application Private IP
+    Value: !Sub 'http://${ApplicationInstance.PrivateIp}'
+    Export:
+      Name: ApplicationPrivateIp
