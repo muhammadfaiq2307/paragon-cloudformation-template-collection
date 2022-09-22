@@ -270,6 +270,17 @@ Resources:
           systemctl start nginx
 
           ufw allow 'Nginx HTTP'
+
+          #cloning node js repo
+          git clone https://github.com/akramab/node-js-demo-app.git
+
+          #installing node 
+          curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
+          apt-get install -y nodejs
+
+          #starting node js
+          node ./node-js-demo-app/server.js
+
     Metadata:
       'AWS::CloudFormation::Designer':
         id: 5a5e7a51-a468-4041-9785-e117ed7f190b
