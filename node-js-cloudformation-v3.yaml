@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: 2010-09-09
-Description: Bastion Host template
+Description: Bastion Host template with nodeJS
 Parameters:
   AvailabilityZone:
     Type: 'AWS::EC2::AvailabilityZone::Name'
