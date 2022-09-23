@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: 2010-09-09
-Description: Laravel template
+Description: Bastion Host template
 Parameters:
   AvailabilityZone:
     Type: 'AWS::EC2::AvailabilityZone::Name'
@@ -52,9 +52,6 @@ Resources:
       Tags:
         - Key: Name
           Value: !Ref 'AWS::StackName'
-    Metadata:
-      'AWS::CloudFormation::Designer':
-        id: 71430398-eca7-4fcc-9073-9ea75f4be5e1
   PrivateSubnet:
     Type: 'AWS::EC2::Subnet'
     Properties:
@@ -70,9 +67,6 @@ Resources:
           Value: !Select 
             - 0
             - !GetAZs ''
-    Metadata:
-      'AWS::CloudFormation::Designer':
-        id: 93e698ad-8370-4af1-af89-0c39eff985b1
   PublicSubnet:
     Type: 'AWS::EC2::Subnet'
     Properties:
@@ -89,26 +83,17 @@ Resources:
           Value: !Select 
             - 0
             - !GetAZs ''
-    Metadata:
-      'AWS::CloudFormation::Designer':
-        id: 8e91ba75-68d1-448a-a0de-f5b2af3e07c9
   InternetGateway:
     Type: 'AWS::EC2::InternetGateway'
     Properties:
       Tags:
         - Key: Name
           Value: !Ref 'AWS::StackName'
-    Metadata:
-      'AWS::CloudFormation::Designer':
-        id: bc1068d4-6fc8-4fc3-ac26-2d94cf5f98b9
   VPCGatewayAttachment:
     Type: 'AWS::EC2::VPCGatewayAttachment'
     Properties:
       InternetGatewayId: !Ref InternetGateway
       VpcId: !Ref VPC
-    Metadata:
-      'AWS::CloudFormation::Designer':
-        id: b25964cf-f502-452a-a559-64e75dd717ce
   RouteTable:
     Type: 'AWS::EC2::RouteTable'
     Properties:
@@ -116,9 +101,13 @@ Resources:
       Tags:
         - Key: Name
           Value: !Ref 'AWS::StackName'
-    Metadata:
-      'AWS::CloudFormation::Designer':
-        id: ebfc4bff-d98d-4dd9-bca5-dd8cfa5a57a2
+  PrivateRouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Ref 'AWS::StackName'
   InternetRoute:
     Type: 'AWS::EC2::Route'
     DependsOn: VPCGatewayAttachment
@@ -126,14 +115,39 @@ Resources:
       RouteTableId: !Ref RouteTable
       DestinationCidrBlock: 0.0.0.0/0
       GatewayId: !Ref InternetGateway
-    Metadata:
-      'AWS::CloudFormation::Designer':
-        id: acbc4a82-277a-4c01-ba3f-bc791428c002
   SubnetRouteTableAssociationAZ1:
     Type: 'AWS::EC2::SubnetRouteTableAssociation'
     Properties:
       RouteTableId: !Ref RouteTable
       SubnetId: !Ref PublicSubnet
+  SubnetPrivateRouteTableAssociationAZ1:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref PrivateSubnet
+  NatGateway:
+    Type: AWS::EC2::NatGateway
+    DependsOn: NatEIP
+    Properties:
+      AllocationId:
+        Fn::GetAtt:
+        - NatEIP
+        - AllocationId
+      SubnetId:
+        Ref: PublicSubnet
+  NatEIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+  NatRoute:
+    Type: AWS::EC2::Route
+    DependsOn: NatGateway
+    Properties:
+      RouteTableId:
+        Ref: PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId:
+        Ref: NatGateway    
   BastionInstance:
     Type: 'AWS::EC2::Instance'
     Properties:
@@ -146,17 +160,11 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub '${AWS::StackName}-BastionInstance'
-    Metadata:
-      'AWS::CloudFormation::Designer':
-        id: 68f5f901-b58a-4a4e-8d53-8c6acb038330
   BastionSecurityGroup:
     Type: 'AWS::EC2::SecurityGroup'
     Properties:
       GroupDescription: !Sub 'Security group for ${AWS::StackName} bastion host'
       VpcId: !Ref VPC
-    Metadata:
-      'AWS::CloudFormation::Designer':
-        id: e2cbc7ad-34d5-4762-acda-046c98e26e6a
   BastionAllowInboundSSHFromInternet:
     Type: 'AWS::EC2::SecurityGroupIngress'
     Properties:
@@ -173,9 +181,6 @@ Resources:
       FromPort: 22
       ToPort: 22
       DestinationSecurityGroupId: !Ref ApplicationSecurityGroup
-    Metadata:
-      'AWS::CloudFormation::Designer':
-        id: 1a9c7019-60bb-4c18-b1d9-d3afbac9a35a
   ApplicationInstance:
     Type: 'AWS::EC2::Instance'
     Properties:
@@ -223,11 +228,7 @@ Resources:
 
           # install wazuh
 
-          curl -so wazuh-agent-4.3.2.deb
-          https://packages.wazuh.com/4.x/apt/pool/main/w/wazuh-agent/wazuh-agent_4.3.2-1_amd64.deb
-          && sudo WAZUH_MANAGER='52.77.133.120'
-          WAZUH_REGISTRATION_PASSWORD='W@zuh&P@arg0n!'
-          WAZUH_AGENT_GROUP='default' dpkg -i ./wazuh-agent-4.3.2.deb
+          curl -so wazuh-agent-4.3.2.deb https://packages.wazuh.com/4.x/apt/pool/main/w/wazuh-agent/wazuh-agent_4.3.2-1_amd64.deb && sudo WAZUH_MANAGER='52.77.133.120' WAZUH_REGISTRATION_PASSWORD='W@zuh&P@arg0n!' WAZUH_AGENT_GROUP='default' dpkg -i ./wazuh-agent-4.3.2.deb
 
 
           # start server
@@ -238,7 +239,6 @@ Resources:
 
           systemctl start wazuh-agent
 
-          
           # configuring nginx
           unlink /etc/nginx/sites-available/default
 
@@ -280,18 +280,11 @@ Resources:
 
           #starting node js
           node ./node-js-demo-app/server.js
-
-    Metadata:
-      'AWS::CloudFormation::Designer':
-        id: 5a5e7a51-a468-4041-9785-e117ed7f190b
   ApplicationSecurityGroup:
     Type: 'AWS::EC2::SecurityGroup'
     Properties:
       GroupDescription: !Sub 'Internal Security group for ${AWS::StackName}'
       VpcId: !Ref VPC
-    Metadata:
-      'AWS::CloudFormation::Designer':
-        id: 43c0480a-3118-4905-9ef9-a9f8fe194013
   ApplicationAllowInboundSSHFromBastion:
     Type: 'AWS::EC2::SecurityGroupIngress'
     Properties:
@@ -300,59 +293,6 @@ Resources:
       FromPort: 22
       ToPort: 22
       SourceSecurityGroupId: !Ref BastionSecurityGroup
-    Metadata:
-      'AWS::CloudFormation::Designer':
-        id: 3a492322-e315-4132-8537-6b22079fb82e
-  DBEC2:
-    Type: 'AWS::RDS::DBInstance'
-    Properties:
-      DBInstanceIdentifier: !Ref DBInstanceIdentifier
-      VPCSecurityGroups:
-        Fn::GetAtt:
-          - DBEC2SecurityGroup
-          - GroupId
-      AllocatedStorage: '5'
-      DBInstanceClass: db.t3.micro
-      Engine: postgres
-      MasterUsername: !Ref DBUsername
-      MasterUserPassword: !Ref DBPassword
-      Tags:
-        - Key: Name
-          Value: !Join 
-            - '-'
-            - - webapp-rds
-              - !Ref EnvironmentType
-    DeletionPolicy: Snapshot
-    UpdateReplacePolicy: Snapshot
-    Metadata:
-      'AWS::CloudFormation::Designer':
-        id: fa0dfb62-8b5c-4ec5-bc7e-523ee1227b03
-  DBEC2SecurityGroup:
-    Type: 'AWS::EC2::SecurityGroup'
-    Properties:
-      GroupName: !Join 
-        - '-'
-        - - webapp-db-security-group
-          - !Ref EnvironmentType
-      GroupDescription: Allow postgres inbound traffic
-      VpcId: !Ref VPC
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 5432
-          ToPort: 5432
-          SourceSecurityGroupId:
-            Fn::GetAtt:
-              - ApplicationSecurityGroup
-              - GroupId
-      Tags:
-        - Key: Name
-          Value: !Join 
-            - '-'
-            - - webapp-db-security-group
-              - !Ref EnvironmentType
-    Metadata:
-      'AWS::CloudFormation::Designer':
-        id: 7be8f8a8-b71b-4eda-b9fc-72ee4ababbb9
 Outputs:
   BastionPublicIp:
     Description: Bastion Public IP
@@ -364,6 +304,3 @@ Outputs:
     Value: !Sub 'http://${ApplicationInstance.PrivateIp}'
     Export:
       Name: ApplicationPrivateIp
-  WebAppDatabaseEndpoint:
-    Description: Connection endpoint for the database
-    Value: !GetAtt DBEC2.Endpoint.Address
