@@ -196,6 +196,9 @@ Resources:
       SubnetId: !Ref PrivateSubnet
       UserData:
         'Fn::Base64': !Sub >
+          
+          sudo su
+          
           #!/bin/bash
 
           apt update -y
