@@ -48,13 +48,44 @@ Resources:
       UserData:
         Fn::Base64: !Sub |
           #!/bin/bash
-          apt-get update -y
-          apt-get install unzip awscli -y
-          apt-get install apache2 -y
-          systemctl start apache2.service
-          cd /var/www/html
-          aws s3 cp s3://udacity-demo-1/udacity.zip .
-          unzip -o udacity.zip
+          apt update -y
+          apt install -y nginx
+          apt install -y git
+          apt install -y ansible
+          git clone https://github.com/akramab/ubuntu-cis-ansible
+          ansible-playbook -i host ./ubuntu-cis-ansible/run.yaml
+          curl -so wazuh-agent-4.3.2.deb https://packages.wazuh.com/4.x/apt/pool/main/w/wazuh-agent/wazuh-agent_4.3.2-1_amd64.deb && sudo WAZUH_MANAGER='52.77.133.120' WAZUH_REGISTRATION_PASSWORD='W@zuh&P@arg0n!' WAZUH_AGENT_GROUP='default' dpkg -i ./wazuh-agent-4.3.2.deb
+          systemctl daemon-reload
+          systemctl enable wazuh-agent
+          systemctl start wazuh-agent
+          unlink /etc/nginx/sites-available/default
+          touch /etc/nginx/sites-available/myserver.config
+          >> /etc/nginx/sites-available/myserver.config cat <<EOF
+          server{
+              listen 80;
+              server_name wach.quest;
+              location / {
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header Host $host;
+                  proxy_pass http://127.0.0.1:3000;
+                  proxy_http_version 1.1;
+                  proxy_set_header Upgrade $http_upgrade;
+                  proxy_set_header Connection "upgrade";
+                  # location /overview {
+                  #     proxy_pass http://127.0.0.1:3000$request_uri;
+                  #     proxy_redirect off;
+                  # }
+              }
+          }
+          EOF
+          ln -s /etc/nginx/sites-available/myserver.config /etc/nginx/sites-enabled/
+          systemctl enable nginx
+          systemctl start nginx
+          ufw allow 'Nginx HTTP'
+          git clone https://github.com/akramab/node-js-demo-app.git
+          curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
+          apt-get install -y nodejs
+          node ./node-js-demo-app/server.js
       ImageId: ami-00c5331644ad576ad       
       KeyName: akram-ssh
       SecurityGroups:
