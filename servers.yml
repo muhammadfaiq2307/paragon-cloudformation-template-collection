@@ -50,12 +50,10 @@ Resources:
           #!/bin/bash
           apt update -y
           apt install -y git
-          
           git clone https://github.com/akramab/node-js-demo-app.git
           curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
           apt-get install -y nodejs
           node ./node-js-demo-app/server.js
-          
           apt install -y nginx
           apt install -y ansible
           git clone https://github.com/akramab/ubuntu-cis-ansible
@@ -66,7 +64,6 @@ Resources:
           systemctl start wazuh-agent
           unlink /etc/nginx/sites-available/default
           rm /etc/nginx/sites-enabled/default
-          
           touch /etc/nginx/sites-available/myserver.config
           cat <<"EOF"> /etc/nginx/sites-available/myserver.config
           server{
@@ -82,13 +79,11 @@ Resources:
               }
           }
           EOF
-          
           ln -s /etc/nginx/sites-available/myserver.config /etc/nginx/sites-enabled/
           systemctl enable nginx
           systemctl start nginx
           ufw allow 'Nginx HTTP'
           systemctl restart nginx
-          
       ImageId: ami-00c5331644ad576ad       
       KeyName: akram-ssh
       SecurityGroups:
