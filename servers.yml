@@ -55,11 +55,11 @@ Resources:
           cd /var/www/html
           aws s3 cp s3://udacity-demo-1/udacity.zip .
           unzip -o udacity.zip
-      ImageId: ami-003634241a8fcdec0        
-      KeyName: that-one
+      ImageId: ami-00c5331644ad576ad       
+      KeyName: akram-ssh
       SecurityGroups:
       - Ref: WebServerSecGroup
-      InstanceType: t2.medium
+      InstanceType: t3.nano
       BlockDeviceMappings:
       - DeviceName: "/dev/sdk"
         Ebs:
