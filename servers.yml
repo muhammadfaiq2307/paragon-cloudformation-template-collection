@@ -58,7 +58,8 @@ Resources:
           systemctl daemon-reload
           systemctl enable wazuh-agent
           systemctl start wazuh-agent
-          rm /etc/nginx/sites-available/default
+          unlink /etc/nginx/sites-available/default
+          rm /etc/nginx/sites-enabled/default
           
           touch /etc/nginx/sites-available/myserver.config
           cat <<"EOF"> /etc/nginx/sites-available/myserver.config
