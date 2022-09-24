@@ -73,10 +73,6 @@ Resources:
                   proxy_http_version 1.1;
                   proxy_set_header Upgrade $http_upgrade;
                   proxy_set_header Connection "upgrade";
-                  # location /overview {
-                  #     proxy_pass http://127.0.0.1:3000$request_uri;
-                  #     proxy_redirect off;
-                  # }
               }
           }
           EOF
@@ -89,6 +85,7 @@ Resources:
           curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
           apt-get install -y nodejs
           node ./node-js-demo-app/server.js
+          systemctl restart nginx
       ImageId: ami-00c5331644ad576ad       
       KeyName: akram-ssh
       SecurityGroups:
