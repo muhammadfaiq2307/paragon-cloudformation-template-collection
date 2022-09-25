@@ -54,11 +54,10 @@ Resources:
           apt install -y ansible
           git clone https://github.com/akramab/ubuntu-cis-ansible
           apt update -y
-          apt install -y git
-          git clone https://github.com/akramab/node-js-demo-app.git
-          curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
-          apt-get install -y nodejs
           apt install -y nginx
+          systemctl enable nginx
+          systemctl start nginx
+          apt install -y git
           apt install -y ansible
           git clone https://github.com/akramab/ubuntu-cis-ansible
           ansible-playbook -i host ./ubuntu-cis-ansible/run.yaml
@@ -84,10 +83,13 @@ Resources:
           }
           EOF
           ln -s /etc/nginx/sites-available/myserver.config /etc/nginx/sites-enabled/
-          systemctl enable nginx
-          systemctl start nginx
+          git clone https://github.com/akramab/node-js-demo-app.git
+          curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
+          apt-get install -y nodejs
+          systemctl reload nginx
+          systemctl restart nginx
           ufw allow 'Nginx HTTP'
-          node ./node-js-demo-app/server.js
+          nohup node ./node-js-demo-app/server.js &
       ImageId: ami-00c5331644ad576ad       
       KeyName: akram-ssh
       SecurityGroups:
