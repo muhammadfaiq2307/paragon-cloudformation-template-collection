@@ -49,11 +49,15 @@ Resources:
         Fn::Base64: !Sub |
           #!/bin/bash
           apt update -y
+          apt install -y nginx
+          apt install -y git
+          apt install -y ansible
+          git clone https://github.com/akramab/ubuntu-cis-ansible
+          apt update -y
           apt install -y git
           git clone https://github.com/akramab/node-js-demo-app.git
           curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
           apt-get install -y nodejs
-          node ./node-js-demo-app/server.js
           apt install -y nginx
           apt install -y ansible
           git clone https://github.com/akramab/ubuntu-cis-ansible
@@ -83,7 +87,7 @@ Resources:
           systemctl enable nginx
           systemctl start nginx
           ufw allow 'Nginx HTTP'
-          systemctl restart nginx
+          node ./node-js-demo-app/server.js
       ImageId: ami-00c5331644ad576ad       
       KeyName: akram-ssh
       SecurityGroups:
@@ -101,8 +105,8 @@ Resources:
           !Sub "${EnvironmentName}-Private-Subnets"
       LaunchConfigurationName:
         Ref: WebAppLaunchConfig
-      MinSize: '4'
-      MaxSize: '5'
+      MinSize: '1'
+      MaxSize: '2'
       TargetGroupARNs:
       - Ref: WebAppTargetGroup
   WebAppLB:
