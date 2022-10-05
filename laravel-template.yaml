@@ -67,29 +67,62 @@ Resources:
           systemctl start wazuh-agent
           unlink /etc/nginx/sites-available/default
           rm /etc/nginx/sites-enabled/default
-          touch /etc/nginx/sites-available/myserver.config
-          cat <<"EOF"> /etc/nginx/sites-available/myserver.config
-          server{
-              listen 80;
-              server_name wach.quest;
-              location / {
-                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                  proxy_set_header Host $host;
-                  proxy_pass http://127.0.0.1:3000;
-                  proxy_http_version 1.1;
-                  proxy_set_header Upgrade $http_upgrade;
-                  proxy_set_header Connection "upgrade";
-              }
+          export COMPOSER_HOME="$HOME/.config/composer"
+          apt install -y php-fpm php-mysql
+          apt update
+          apt install -y php-cli unzip
+          curl -sS https://getcomposer.org/installer -o /tmp/composer-setup.php
+          php /tmp/composer-setup.php --install-dir=/usr/local/bin --filename=composer
+          apt update
+          apt install -y php-mbstring php-xml php-bcmath
+          composer create-project --prefer-dist laravel/laravel paragon_aws_laravel
+          cd paragon_aws_laravel
+          php artisan
+          cd ..
+          sudo mv ./paragon_aws_laravel /var/www/paragon_aws_laravel
+          sudo chown -R www-data.www-data /var/www/paragon_aws_laravel/storage
+          sudo chown -R www-data.www-data /var/www/paragon_aws_laravel/bootstrap/cache
+          touch /etc/nginx/sites-available/paragon_aws_laravel
+          cat <<"EOF"> /etc/nginx/sites-available/paragon_aws_laravel
+          server {
+            listen 80;
+            server_name server_domain_or_IP;
+            root /var/www/paragon_aws_laravel/public;
+        
+            add_header X-Frame-Options "SAMEORIGIN";
+            add_header X-XSS-Protection "1; mode=block";
+            add_header X-Content-Type-Options "nosniff";
+        
+            index index.html index.htm index.php;
+        
+            charset utf-8;
+        
+            location / {
+                try_files $uri $uri/ /index.php?$query_string;
+            }
+        
+            location = /favicon.ico { access_log off; log_not_found off; }
+            location = /robots.txt  { access_log off; log_not_found off; }
+        
+            error_page 404 /index.php;
+        
+            location ~ \.php$ {
+                fastcgi_pass unix:/var/run/php/php7.4-fpm.sock;
+                fastcgi_index index.php;
+                fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+                include fastcgi_params;
+            }
+        
+            location ~ /\.(?!well-known).* {
+                deny all;
+            }
           }
           EOF
-          ln -s /etc/nginx/sites-available/myserver.config /etc/nginx/sites-enabled/
-          git clone https://github.com/akramab/node-js-demo-app.git
-          curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
-          apt-get install -y nodejs
-          systemctl reload nginx
+          ln -s /etc/nginx/sites-available/paragon_aws_laravel /etc/nginx/sites-enabled/
           systemctl restart nginx
+          ufw enable
           ufw allow 'Nginx HTTP'
-          nohup node ./node-js-demo-app/server.js &
+          ufw allow ssh
       ImageId: ami-00c5331644ad576ad       
       KeyName: akram-ssh
       SecurityGroups:
