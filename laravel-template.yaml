@@ -1,6 +1,6 @@
 Parameters:
     EnvironmentName:
-        Description: An environment name that will be prefixed to resource names
+        Description: An environment name that will be prefixed to resource names, enter the environment name of desired vpc
         Type: String
 
 Resources:
@@ -21,6 +21,9 @@ Resources:
         FromPort: 80
         ToPort: 80
         CidrIp: 0.0.0.0/0
+      Tags:
+      - Key: Name 
+        Value: !Sub ${EnvironmentName} Load Balancer Security Group
   WebServerSecGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -42,6 +45,9 @@ Resources:
         FromPort: 0
         ToPort: 65535
         CidrIp: 0.0.0.0/0
+      Tags:
+      - Key: Name 
+        Value: !Sub ${EnvironmentName} Web Server Security Group
   WebAppLaunchConfig:
     Type: AWS::AutoScaling::LaunchConfiguration
     Properties:
@@ -132,6 +138,9 @@ Resources:
       - DeviceName: "/dev/sdk"
         Ebs:
           VolumeSize: '10'
+      Tags:
+      - Key: Name 
+        Value: !Sub ${EnvironmentName} Web App Launch Group
   WebAppGroup:
     Type: AWS::AutoScaling::AutoScalingGroup
     Properties:
@@ -144,6 +153,9 @@ Resources:
       MaxSize: '2'
       TargetGroupARNs:
       - Ref: WebAppTargetGroup
+      Tags:
+      - Key: Name 
+        Value: !Sub ${EnvironmentName} Web App AutoScaling Group
   WebAppLB:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
@@ -152,6 +164,9 @@ Resources:
       - Fn::ImportValue: !Sub "${EnvironmentName}-Public2-Subnet"
       SecurityGroups:
       - Ref: LBSecGroup
+      Tags:
+      - Key: Name 
+        Value: !Sub ${EnvironmentName} Web App Load Balancer
   Listener:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
@@ -188,3 +203,11 @@ Resources:
       VpcId: 
         Fn::ImportValue:
           Fn::Sub: "${EnvironmentName}-VPC"
+
+Outputs: 
+
+    VPC: 
+        Description: A reference to the created VPC
+        Value: !Ref VPC
+        Export:
+          Name: !Sub ${EnvironmentName}-VPC
