@@ -1,0 +1,157 @@
+Parameters:
+    EnvironmentName:
+        Description: An environment name that will be prefixed to resource names
+        Type: String
+
+Resources:
+  LBSecGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow http to our load balancer
+      VpcId:
+        Fn::ImportValue:
+          !Sub "${EnvironmentName}-VPC"
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 80
+        ToPort: 80
+        CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+      - IpProtocol: tcp
+        FromPort: 80
+        ToPort: 80
+        CidrIp: 0.0.0.0/0
+  WebServerSecGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow http to our hosts and SSH from local only
+      VpcId:
+        Fn::ImportValue:
+          !Sub "${EnvironmentName}-VPC"
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 80
+        ToPort: 80
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: tcp
+        FromPort: 22
+        ToPort: 22
+        CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+      - IpProtocol: tcp
+        FromPort: 0
+        ToPort: 65535
+        CidrIp: 0.0.0.0/0
+  WebAppLaunchConfig:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          apt update -y
+          apt install -y nginx
+          apt install -y git
+          apt install -y ansible
+          git clone https://github.com/akramab/ubuntu-cis-ansible
+          apt update -y
+          apt install -y nginx
+          systemctl enable nginx
+          systemctl start nginx
+          apt install -y git
+          apt install -y ansible
+          git clone https://github.com/akramab/ubuntu-cis-ansible
+          ansible-playbook -i host ./ubuntu-cis-ansible/run.yaml
+          curl -so wazuh-agent-4.3.2.deb https://packages.wazuh.com/4.x/apt/pool/main/w/wazuh-agent/wazuh-agent_4.3.2-1_amd64.deb && sudo WAZUH_MANAGER='52.77.133.120' WAZUH_REGISTRATION_PASSWORD='W@zuh&P@arg0n!' WAZUH_AGENT_GROUP='default' dpkg -i ./wazuh-agent-4.3.2.deb
+          systemctl daemon-reload
+          systemctl enable wazuh-agent
+          systemctl start wazuh-agent
+          unlink /etc/nginx/sites-available/default
+          rm /etc/nginx/sites-enabled/default
+          touch /etc/nginx/sites-available/myserver.config
+          cat <<"EOF"> /etc/nginx/sites-available/myserver.config
+          server{
+              listen 80;
+              server_name wach.quest;
+              location / {
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header Host $host;
+                  proxy_pass http://127.0.0.1:3000;
+                  proxy_http_version 1.1;
+                  proxy_set_header Upgrade $http_upgrade;
+                  proxy_set_header Connection "upgrade";
+              }
+          }
+          EOF
+          ln -s /etc/nginx/sites-available/myserver.config /etc/nginx/sites-enabled/
+          git clone https://github.com/akramab/node-js-demo-app.git
+          curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
+          apt-get install -y nodejs
+          systemctl reload nginx
+          systemctl restart nginx
+          ufw allow 'Nginx HTTP'
+          nohup node ./node-js-demo-app/server.js &
+      ImageId: ami-00c5331644ad576ad       
+      KeyName: akram-ssh
+      SecurityGroups:
+      - Ref: WebServerSecGroup
+      InstanceType: t3.nano
+      BlockDeviceMappings:
+      - DeviceName: "/dev/sdk"
+        Ebs:
+          VolumeSize: '10'
+  WebAppGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      VPCZoneIdentifier:
+      - Fn::ImportValue: 
+          !Sub "${EnvironmentName}-Private-Subnets"
+      LaunchConfigurationName:
+        Ref: WebAppLaunchConfig
+      MinSize: '1'
+      MaxSize: '2'
+      TargetGroupARNs:
+      - Ref: WebAppTargetGroup
+  WebAppLB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Subnets:
+      - Fn::ImportValue: !Sub "${EnvironmentName}-Public1-Subnet"
+      - Fn::ImportValue: !Sub "${EnvironmentName}-Public2-Subnet"
+      SecurityGroups:
+      - Ref: LBSecGroup
+  Listener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+      - Type: forward
+        TargetGroupArn:
+          Ref: WebAppTargetGroup
+      LoadBalancerArn:
+        Ref: WebAppLB
+      Port: '80'
+      Protocol: HTTP
+  ALBListenerRule:
+      Type: AWS::ElasticLoadBalancingV2::ListenerRule
+      Properties:
+        Actions:
+        - Type: forward
+          TargetGroupArn: !Ref 'WebAppTargetGroup'
+        Conditions:
+        - Field: path-pattern
+          Values: [/]
+        ListenerArn: !Ref 'Listener'
+        Priority: 1
+  WebAppTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 10
+      HealthCheckPath: /
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 8
+      HealthyThresholdCount: 2
+      Port: 80
+      Protocol: HTTP
+      UnhealthyThresholdCount: 5
+      VpcId: 
+        Fn::ImportValue:
+          Fn::Sub: "${EnvironmentName}-VPC"
