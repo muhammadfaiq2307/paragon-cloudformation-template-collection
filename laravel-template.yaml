@@ -4,6 +4,7 @@ Parameters:
         Type: String
 
 Resources:
+
   LBSecGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -24,6 +25,7 @@ Resources:
       Tags:
       - Key: Name 
         Value: !Sub ${EnvironmentName} Load Balancer Security Group
+        
   WebServerSecGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -48,46 +50,51 @@ Resources:
       Tags:
       - Key: Name 
         Value: !Sub ${EnvironmentName} Web Server Security Group
+        
   WebAppLaunchConfig:
     Type: AWS::AutoScaling::LaunchConfiguration
     Properties:
       UserData:
         Fn::Base64: !Sub |
-          #!/bin/bash
-          apt update -y
-          apt install -y nginx
-          apt install -y git
-          apt install -y ansible
-          git clone https://github.com/akramab/ubuntu-cis-ansible
+          #!/bin/bash    
           hostname paragon-laravel
           apt update -y
-          apt install -y nginx
-          systemctl enable nginx
-          systemctl start nginx
-          apt install -y git
-          apt install -y ansible
           
+          # wazuh agent install
+          apt-get remove -y --purge wazuh-agent
           curl -so wazuh-agent-4.3.2.deb https://packages.wazuh.com/4.x/apt/pool/main/w/wazuh-agent/wazuh-agent_4.3.2-1_amd64.deb && sudo WAZUH_MANAGER='52.77.133.120' WAZUH_REGISTRATION_PASSWORD='W@zuh&P@arg0n!' WAZUH_AGENT_GROUP='default' dpkg -i ./wazuh-agent-4.3.2.deb
           systemctl daemon-reload
           systemctl enable wazuh-agent
           systemctl start wazuh-agent
-          unlink /etc/nginx/sites-available/default
-          rm /etc/nginx/sites-enabled/default
+          
+          # php and composer install
           export COMPOSER_HOME="$HOME/.config/composer"
-          apt install -y php-fpm php-mysql
+          apt install -y software-properties-common
+          add-apt-repository -y ppa:ondrej/php
           apt update
-          apt install -y php-cli unzip
+          apt install -y php8.1-fpm php8.1-mysql php8.1-curl
+          apt update
+          apt install -y php8.1-cli unzip
           curl -sS https://getcomposer.org/installer -o /tmp/composer-setup.php
           php /tmp/composer-setup.php --install-dir=/usr/local/bin --filename=composer
           apt update
-          apt install -y php-mbstring php-xml php-bcmath
+          apt install -y php8.1-mbstring php8.1-xml php8.1-bcmath 
+          
+          # create laravel project
           composer create-project --prefer-dist laravel/laravel paragon_aws_laravel
           cd paragon_aws_laravel
           php artisan
           cd ..
+          
+          # move laravel project to var/www
           sudo mv ./paragon_aws_laravel /var/www/paragon_aws_laravel
           sudo chown -R www-data.www-data /var/www/paragon_aws_laravel/storage
           sudo chown -R www-data.www-data /var/www/paragon_aws_laravel/bootstrap/cache
+          
+          # install and setup nginx
+          apt install -y nginx
+          unlink /etc/nginx/sites-available/default
+          rm /etc/nginx/sites-enabled/default
           touch /etc/nginx/sites-available/paragon_aws_laravel
           cat <<"EOF"> /etc/nginx/sites-available/paragon_aws_laravel
           server {
@@ -125,10 +132,14 @@ Resources:
           }
           EOF
           ln -s /etc/nginx/sites-available/paragon_aws_laravel /etc/nginx/sites-enabled/
+          systemctl enable nginx
           systemctl restart nginx
+          
+          # set firewall
           ufw enable
           ufw allow 'Nginx HTTP'
           ufw allow ssh
+          
       ImageId: ami-00a5bf3151d6332a4      
       KeyName: akram-ssh
       SecurityGroups:
@@ -138,9 +149,7 @@ Resources:
       - DeviceName: "/dev/sdk"
         Ebs:
           VolumeSize: '10'
-      Tags:
-      - Key: Name 
-        Value: !Sub ${EnvironmentName} Web App Launch Group
+          
   WebAppGroup:
     Type: AWS::AutoScaling::AutoScalingGroup
     Properties:
@@ -153,9 +162,7 @@ Resources:
       MaxSize: '2'
       TargetGroupARNs:
       - Ref: WebAppTargetGroup
-      Tags:
-      - Key: Name 
-        Value: !Sub ${EnvironmentName} Web App AutoScaling Group
+      
   WebAppLB:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
@@ -167,6 +174,7 @@ Resources:
       Tags:
       - Key: Name 
         Value: !Sub ${EnvironmentName} Web App Load Balancer
+        
   Listener:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
@@ -178,6 +186,7 @@ Resources:
         Ref: WebAppLB
       Port: '80'
       Protocol: HTTP
+      
   ALBListenerRule:
       Type: AWS::ElasticLoadBalancingV2::ListenerRule
       Properties:
@@ -189,6 +198,7 @@ Resources:
           Values: [/]
         ListenerArn: !Ref 'Listener'
         Priority: 1
+        
   WebAppTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
@@ -203,11 +213,3 @@ Resources:
       VpcId: 
         Fn::ImportValue:
           Fn::Sub: "${EnvironmentName}-VPC"
-
-Outputs: 
-
-    VPC: 
-        Description: A reference to the created VPC
-        Value: !Ref VPC
-        Export:
-          Name: !Sub ${EnvironmentName}-VPC
