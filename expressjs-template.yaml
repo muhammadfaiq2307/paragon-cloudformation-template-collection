@@ -83,13 +83,46 @@ Resources:
           }
           EOF
           ln -s /etc/nginx/sites-available/myserver.config /etc/nginx/sites-enabled/
-          git clone https://github.com/akramab/node-js-demo-app.git
+
+          #install node.js
           curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
           apt-get install -y nodejs
+
+          #install pm2 for current system
+          sudo npm i -g pm2
+
+          #init sample express project
+          mkdir express-website
+          cd express-website
+          npm init -y
+          npm i express
+          touch index.js
+          cat <<"EOF"> ./index.js
+          const express = require("express");
+          const app = express();
+
+          app.get("/", (req, res) => {
+              res.send("Express.js PM2!");
+          });
+
+          app.listen(3000, () => {
+              console.log("Server listening on port 3000!");
+          })
+          EOF
+
+          #start the app with pm2
+          pm2 start index.js
+
+          #create ecosystem file for pm2 env (prod/dev/etc.)
+          pm2 ecosystem
+
+          #re run with production env
+          pm2 reload ecosystem.config.js --env production
+
+          #reload nginx
           systemctl reload nginx
           systemctl restart nginx
           ufw allow 'Nginx HTTP'
-          nohup node ./node-js-demo-app/server.js &
       ImageId: ami-00c5331644ad576ad       
       KeyName: akram-ssh
       SecurityGroups:
