@@ -2,6 +2,10 @@ Parameters:
     EnvironmentName:
         Description: An environment name that will be prefixed to resource names
         Type: String
+      
+    CreatorName:
+        Description: Specify creator name to know who is responsible for creating this instance
+        Type: String
 
 Resources:
   LBSecGroup:
@@ -21,6 +25,11 @@ Resources:
         FromPort: 80
         ToPort: 80
         CidrIp: 0.0.0.0/0
+      Tags:
+      - Key: Name 
+        Value: !Sub ${EnvironmentName} Load Balancer Security Group
+      - Key: Creator
+        Value: !Ref CreatorName
   WebServerSecGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -42,6 +51,11 @@ Resources:
         FromPort: 0
         ToPort: 65535
         CidrIp: 0.0.0.0/0
+      Tags:
+      - Key: Name 
+        Value: !Sub ${EnvironmentName} Web Server Security Group
+      - Key: Creator
+        Value: !Ref CreatorName
   WebAppLaunchConfig:
     Type: AWS::AutoScaling::LaunchConfiguration
     Properties:
@@ -152,6 +166,11 @@ Resources:
       - Fn::ImportValue: !Sub "${EnvironmentName}-Public2-Subnet"
       SecurityGroups:
       - Ref: LBSecGroup
+      Tags:
+      - Key: Name 
+        Value: !Sub ${EnvironmentName} Web App Load Balancer
+      - Key: Creator
+        Value: !Ref CreatorName
   Listener:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:

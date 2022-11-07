@@ -3,6 +3,10 @@ Parameters:
         Description: An environment name that will be prefixed to resource names
         Type: String
 
+    CreatorName:
+        Description: Specify creator name to know who is responsible for creating this instance
+        Type: String
+
     VpcCIDR: 
         Description: Please enter the IP range (CIDR notation) for this VPC
         Type: String
@@ -38,6 +42,8 @@ Resources:
             Tags:
                 - Key: Name 
                   Value: !Ref EnvironmentName
+                - Key: Creator
+                  Value: !Ref CreatorName
 
     InternetGateway:
         Type: AWS::EC2::InternetGateway
@@ -45,6 +51,8 @@ Resources:
             Tags:
                 - Key: Name
                   Value: !Ref EnvironmentName
+                - Key: Creator
+                  Value: !Ref CreatorName
 
     InternetGatewayAttachment:
         Type: AWS::EC2::VPCGatewayAttachment
@@ -62,6 +70,8 @@ Resources:
             Tags: 
                 - Key: Name 
                   Value: !Sub ${EnvironmentName} Public Subnet (AZ1)
+                - Key: Creator
+                  Value: !Ref CreatorName
 
     PublicSubnet2: 
         Type: AWS::EC2::Subnet
@@ -73,6 +83,8 @@ Resources:
             Tags: 
                 - Key: Name 
                   Value: !Sub ${EnvironmentName} Public Subnet (AZ2)
+                - Key: Creator
+                  Value: !Ref CreatorName
 
     PrivateSubnet1: 
         Type: AWS::EC2::Subnet
@@ -84,6 +96,8 @@ Resources:
             Tags: 
                 - Key: Name 
                   Value: !Sub ${EnvironmentName} Private Subnet (AZ1)
+                - Key: Creator
+                  Value: !Ref CreatorName
 
     PrivateSubnet2: 
         Type: AWS::EC2::Subnet
@@ -95,6 +109,8 @@ Resources:
             Tags: 
                 - Key: Name 
                   Value: !Sub ${EnvironmentName} Private Subnet (AZ2)
+                - Key: Creator
+                  Value: !Ref CreatorName
 
     NatGateway1EIP:
         Type: AWS::EC2::EIP
@@ -156,6 +172,8 @@ Resources:
             Tags: 
                 - Key: Name 
                   Value: !Sub ${EnvironmentName} Private Routes (AZ1)
+                - Key: Creator
+                  Value: !Ref CreatorName
 
     DefaultPrivateRoute1:
         Type: AWS::EC2::Route
@@ -177,6 +195,8 @@ Resources:
             Tags: 
                 - Key: Name 
                   Value: !Sub ${EnvironmentName} Private Routes (AZ2)
+                - Key: Creator
+                  Value: !Ref CreatorName
 
     DefaultPrivateRoute2:
         Type: AWS::EC2::Route
