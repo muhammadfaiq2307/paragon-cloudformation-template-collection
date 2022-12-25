@@ -1,0 +1,225 @@
+Parameters:
+    EnvironmentName:
+        Description: An environment name that will be prefixed to resource names, enter the environment name of desired vpc
+        Type: String
+    
+    CreatorName:
+        Description: Specify creator name to know who is responsible for creating this instance
+        Type: String
+        
+    VpcId:
+      Type: AWS::EC2::VPC::Id
+      
+    PublicSubnets:
+      Type: List<AWS::EC2::Subnet::Id>
+    
+    PrivateSubnets:
+      Type: List<AWS::EC2::Subnet::Id>
+
+
+Resources:
+
+  LBSecGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow http to our load balancer
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 80
+        ToPort: 80
+        CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+      - IpProtocol: tcp
+        FromPort: 80
+        ToPort: 80
+        CidrIp: 0.0.0.0/0
+      Tags:
+      - Key: Name 
+        Value: !Sub ${EnvironmentName} Load Balancer Security Group
+      - Key: Creator
+        Value: !Ref CreatorName
+        
+  WebServerSecGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow http to our hosts and SSH from local only
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 80
+        ToPort: 80
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: tcp
+        FromPort: 22
+        ToPort: 22
+        CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+      - IpProtocol: tcp
+        FromPort: 0
+        ToPort: 65535
+        CidrIp: 0.0.0.0/0
+      Tags:
+      - Key: Name 
+        Value: !Sub ${EnvironmentName} Web Server Security Group
+      - Key: Creator
+        Value: !Ref CreatorName
+        
+  WebAppLaunchConfig:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash    
+          hostname paragon-laravel
+          apt update -y
+          
+          # wazuh agent install
+          apt-get remove -y --purge wazuh-agent
+          curl -so wazuh-agent-4.3.2.deb https://packages.wazuh.com/4.x/apt/pool/main/w/wazuh-agent/wazuh-agent_4.3.2-1_amd64.deb && sudo WAZUH_MANAGER='52.77.133.120' WAZUH_REGISTRATION_PASSWORD='W@zuh&P@arg0n!' WAZUH_AGENT_GROUP='default' dpkg -i ./wazuh-agent-4.3.2.deb
+          systemctl daemon-reload
+          systemctl enable wazuh-agent
+          systemctl start wazuh-agent
+          
+          # php and composer install
+          export COMPOSER_HOME="$HOME/.config/composer"
+          apt install -y software-properties-common
+          add-apt-repository -y ppa:ondrej/php
+          apt update
+          apt install -y php8.1-fpm php8.1-mysql php8.1-curl
+          apt update
+          apt install -y php8.1-cli unzip
+          curl -sS https://getcomposer.org/installer -o /tmp/composer-setup.php
+          php /tmp/composer-setup.php --install-dir=/usr/local/bin --filename=composer
+          apt update
+          apt install -y php8.1-mbstring php8.1-xml php8.1-bcmath 
+          
+          # create laravel project
+          composer create-project --prefer-dist laravel/laravel paragon_aws_laravel
+          cd paragon_aws_laravel
+          php artisan
+          cd ..
+          
+          # move laravel project to var/www
+          sudo mv ./paragon_aws_laravel /var/www/paragon_aws_laravel
+          sudo chown -R www-data.www-data /var/www/paragon_aws_laravel/storage
+          sudo chown -R www-data.www-data /var/www/paragon_aws_laravel/bootstrap/cache
+          
+          # install and setup nginx
+          apt install -y nginx
+          unlink /etc/nginx/sites-available/default
+          rm /etc/nginx/sites-enabled/default
+          touch /etc/nginx/sites-available/paragon_aws_laravel
+          cat <<"EOF"> /etc/nginx/sites-available/paragon_aws_laravel
+          server {
+            listen 80;
+            server_name server_domain_or_IP;
+            root /var/www/paragon_aws_laravel/public;
+        
+            add_header X-Frame-Options "SAMEORIGIN";
+            add_header X-XSS-Protection "1; mode=block";
+            add_header X-Content-Type-Options "nosniff";
+        
+            index index.html index.htm index.php;
+        
+            charset utf-8;
+        
+            location / {
+                try_files $uri $uri/ /index.php?$query_string;
+            }
+        
+            location = /favicon.ico { access_log off; log_not_found off; }
+            location = /robots.txt  { access_log off; log_not_found off; }
+        
+            error_page 404 /index.php;
+        
+            location ~ \.php$ {
+                fastcgi_pass unix:/var/run/php/php8.1-fpm.sock;
+                fastcgi_index index.php;
+                fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+                include fastcgi_params;
+            }
+        
+            location ~ /\.(?!well-known).* {
+                deny all;
+            }
+          }
+          EOF
+          ln -s /etc/nginx/sites-available/paragon_aws_laravel /etc/nginx/sites-enabled/
+          systemctl enable nginx
+          systemctl restart nginx
+          
+          # set firewall
+          ufw enable
+          ufw allow 'Nginx HTTP'
+          ufw allow ssh
+          
+      ImageId: ami-00a5bf3151d6332a4      
+      KeyName: akram-ssh
+      SecurityGroups:
+      - Ref: WebServerSecGroup
+      InstanceType: t3.nano
+      BlockDeviceMappings:
+      - DeviceName: "/dev/sdk"
+        Ebs:
+          VolumeSize: '10'
+          
+  WebAppGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      VPCZoneIdentifier: !Ref PrivateSubnets
+      LaunchConfigurationName:
+        Ref: WebAppLaunchConfig
+      MinSize: '1'
+      MaxSize: '2'
+      TargetGroupARNs:
+      - Ref: WebAppTargetGroup
+      
+  WebAppLB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Subnets: !Ref PublicSubnets
+      SecurityGroups:
+      - Ref: LBSecGroup
+      Tags:
+      - Key: Name 
+        Value: !Sub ${EnvironmentName} Web App Load Balancer
+      - Key: Creator
+        Value: !Ref CreatorName
+        
+  Listener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+      - Type: forward
+        TargetGroupArn:
+          Ref: WebAppTargetGroup
+      LoadBalancerArn:
+        Ref: WebAppLB
+      Port: '80'
+      Protocol: HTTP
+      
+  ALBListenerRule:
+      Type: AWS::ElasticLoadBalancingV2::ListenerRule
+      Properties:
+        Actions:
+        - Type: forward
+          TargetGroupArn: !Ref 'WebAppTargetGroup'
+        Conditions:
+        - Field: path-pattern
+          Values: [/]
+        ListenerArn: !Ref 'Listener'
+        Priority: 1
+        
+  WebAppTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 10
+      HealthCheckPath: /
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 8
+      HealthyThresholdCount: 2
+      Port: 80
+      Protocol: HTTP
+      UnhealthyThresholdCount: 5
+      VpcId: !Ref VpcId
